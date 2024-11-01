@@ -20,11 +20,21 @@ def main():
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect(("127.0.0.1", 10000))
 
-    username = input("Enter your username: ")
-    password = input("Enter your password: ")
+    while True:
+        username = input("Enter your username: ")
+        password = input("Enter your password: ")
 
-    # Save credentials to a file
-    save_credentials(username, password)
+        # Send credentials to the server
+        client.send(username.encode())
+        client.send(password.encode())
+
+        # Receive login response
+        response = client.recv(1024).decode()
+        print(response)
+
+        if "successful" in response:
+            break  # Exit the loop if login is successful
+
 
     client.send(username.encode())
 
