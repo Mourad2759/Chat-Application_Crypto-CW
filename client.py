@@ -12,11 +12,20 @@ def receive_messages(client_socket):
         except:
             break
 
+def save_credentials(username, password):
+    with open("credentials.txt", "a") as file:
+        file.write(f"{username}:{password}\n")
+
 def main():
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect(("127.0.0.1", 10000))
 
     username = input("Enter your username: ")
+    password = input("Enter your password: ")
+
+    # Save credentials to a file
+    save_credentials(username, password)
+
     client.send(username.encode())
 
     # Start a thread to receive messages
