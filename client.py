@@ -3,6 +3,7 @@ import threading
 import re
 import os
 import hashlib
+import base64
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
@@ -70,10 +71,20 @@ def signup():
     print("Signup successful! Please log in now.")
     return login()
 
+def load_private_key():
+    """Loads the private key from a file."""
+    with open(PRIVATE_KEY_PATH, "rb") as key_file:
+        private_key = serialization.load_pem_private_key(
+            key_file.read(),
+            password=None
+        )
+    return private_key
+
 def decrypt_message(encrypted_message, private_key):
-    """Decrypts a message using the provided RSA private key."""
+    """Decrypts a base64 encoded encrypted message using the provided RSA private key."""
+    encrypted_message_bytes = base64.b64decode(encrypted_message)
     decrypted_message = private_key.decrypt(
-        encrypted_message,
+        encrypted_message_bytes,
         padding.OAEP(
             mgf=padding.MGF1(algorithm=hashes.SHA256()),
             algorithm=hashes.SHA256(),
@@ -85,17 +96,10 @@ def decrypt_message(encrypted_message, private_key):
 def view_chat_history():
     """Decrypts and displays the chat history."""
     try:
-        with open(PRIVATE_KEY_PATH, "rb") as key_file:
-            private_key = serialization.load_pem_private_key(
-                key_file.read(),
-                password=None
-            )
-    except FileNotFoundError:
-        print("Private key not found. Cannot decrypt chat history.")
-        return
-
-    try:
-        with open(CHAT_HISTORY_PATH, "rb") as f:
+        private_key = load_private_key()
+        
+        # Open the file with explicit UTF-8 encoding
+        with open(CHAT_HISTORY_PATH, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         print("\n--- Chat History ---")
@@ -108,6 +112,7 @@ def view_chat_history():
         print("--- End of Chat History ---\n")
     except FileNotFoundError:
         print("Chat history file not found.")
+
 
 def receive_messages(client_socket):
     """Handles receiving messages from the server."""
