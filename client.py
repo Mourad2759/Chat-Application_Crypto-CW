@@ -61,8 +61,14 @@ def main():
         return
 
     # Receive RSA public key
-    public_key = client_socket.recv(1024)
-    rsa_public_key = RSA.import_key(public_key)
+    public_key_data = client_socket.recv(1024)
+    try:
+        rsa_public_key = RSA.import_key(public_key_data)
+    except ValueError as e:
+        print("Failed to load RSA public key:", e)
+        client_socket.close()
+        return
+
     rsa_cipher = PKCS1_OAEP.new(rsa_public_key)
 
     # Encrypt AES key and send to server
