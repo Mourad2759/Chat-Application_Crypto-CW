@@ -3,9 +3,17 @@ import threading
 import re
 import os
 import hashlib
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import hashes
 
 HOST = '127.0.0.1'
 PORT = 65432
+
+# File paths for keys and chat history
+PUBLIC_KEY_PATH = "public_key.pem"
+PRIVATE_KEY_PATH = "private_key.pem"
+CHAT_HISTORY_PATH = "chat_history.txt"
 
 # Complex password check
 def is_complex_password(password):
@@ -62,6 +70,45 @@ def signup():
     print("Signup successful! Please log in now.")
     return login()
 
+def decrypt_message(encrypted_message, private_key):
+    """Decrypts a message using the provided RSA private key."""
+    decrypted_message = private_key.decrypt(
+        encrypted_message,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    return decrypted_message.decode()
+
+def view_chat_history():
+    """Decrypts and displays the chat history."""
+    try:
+        with open(PRIVATE_KEY_PATH, "rb") as key_file:
+            private_key = serialization.load_pem_private_key(
+                key_file.read(),
+                password=None
+            )
+    except FileNotFoundError:
+        print("Private key not found. Cannot decrypt chat history.")
+        return
+
+    try:
+        with open(CHAT_HISTORY_PATH, "rb") as f:
+            lines = f.readlines()
+
+        print("\n--- Chat History ---")
+        for encrypted_message in lines:
+            try:
+                decrypted_message = decrypt_message(encrypted_message.strip(), private_key)
+                print(decrypted_message)
+            except Exception as e:
+                print("Error decrypting a message:", e)
+        print("--- End of Chat History ---\n")
+    except FileNotFoundError:
+        print("Chat history file not found.")
+
 def receive_messages(client_socket):
     """Handles receiving messages from the server."""
     while True:
@@ -86,15 +133,31 @@ def send_messages(client_socket):
             break
         client_socket.send(f"{nickname}: {message}".encode())
 
-# Main client function
-nickname = signup_or_login()
+def main():
+    global nickname
+    nickname = signup_or_login()
 
-client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client.connect((HOST, PORT))
-client.send(nickname.encode())
+    # Provide the user with options after login
+    choice = input("\nChoose an option:\n1. Join Chat Room\n2. View Chat History\n> ")
 
-receive_thread = threading.Thread(target=receive_messages, args=(client,))
-receive_thread.start()
+    if choice == '1':
+        # Join the chat room
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client.connect((HOST, PORT))
+        client.send(nickname.encode())
 
-send_thread = threading.Thread(target=send_messages, args=(client,))
-send_thread.start()
+        receive_thread = threading.Thread(target=receive_messages, args=(client,))
+        receive_thread.start()
+
+        send_thread = threading.Thread(target=send_messages, args=(client,))
+        send_thread.start()
+
+    elif choice == '2':
+        # View the chat history
+        view_chat_history()
+
+    else:
+        print("Invalid choice. Exiting.")
+
+if __name__ == "__main__":
+    main()
