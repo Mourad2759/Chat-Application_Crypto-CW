@@ -21,6 +21,8 @@ def is_complex_password(password):
     return (len(password) >= 8 and re.search(r'[A-Z]', password) and re.search(r'[a-z]', password) 
             and re.search(r'[0-9]', password) and re.search(r'[!@#$%^&*()_+]', password))
 
+
+
 # Hashing password
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -71,6 +73,28 @@ def signup():
     print("Signup successful! Please log in now.")
     return login()
 
+def post_exit_menu(client_socket):
+    """Displays a menu after the user exits the chat room."""
+    while True:
+        choice = input("\nChoose an option:\n1. View Chat History\n2. Enter Chat Room Again\n3. Exit the App\n> ")
+
+        if choice == '1':
+            # View chat history
+            view_chat_history()
+        elif choice == '2':
+            # Re-enter the chat room
+            client_socket.close()  # Close current connection
+            main()  # Restart the app
+            break
+        elif choice == '3':
+            # Exit the app
+            print("Exiting the application.")
+            client_socket.close()  # Close the connection
+            break
+        else:
+            print("Invalid choice. Please try again.")
+
+
 def load_private_key():
     """Loads the private key from a file."""
     with open(PRIVATE_KEY_PATH, "rb") as key_file:
@@ -79,6 +103,28 @@ def load_private_key():
             password=None
         )
     return private_key
+
+def post_exit_menu(client_socket):
+    """Displays a menu after the user exits the chat room."""
+    while True:
+        choice = input("\nChoose an option:\n1. View Chat History\n2. Enter Chat Room Again\n3. Exit the App\n> ")
+
+        if choice == '1':
+            # View chat history
+            view_chat_history()
+        elif choice == '2':
+            # Re-enter the chat room
+            client_socket.close()  # Close current connection
+            main()  # Restart the app
+            break
+        elif choice == '3':
+            # Exit the app
+            print("Exiting the application.")
+            client_socket.close()  # Close the connection
+            break
+        else:
+            print("Invalid choice. Please try again.")
+
 
 def decrypt_message(encrypted_message, private_key):
     """Decrypts a base64 encoded encrypted message using the provided RSA private key."""
@@ -94,25 +140,30 @@ def decrypt_message(encrypted_message, private_key):
     return decrypted_message.decode()
 
 def view_chat_history():
-    """Decrypts and displays the chat history."""
-    try:
-        private_key = load_private_key()
-        
-        # Open the file with explicit UTF-8 encoding
-        with open(CHAT_HISTORY_PATH, "r", encoding="utf-8") as f:
-            lines = f.readlines()
+    """Decrypts and displays the chat history if the correct admin code is provided."""
+    admin_code = input("Enter the admin code to view chat history: ")
+    
+    # Check if the provided admin code matches the correct one
+    if admin_code == "25-8-2024":
+        try:
+            private_key = load_private_key()
+            
+            # Open the file with explicit UTF-8 encoding
+            with open(CHAT_HISTORY_PATH, "r", encoding="utf-8") as f:
+                lines = f.readlines()
 
-        print("\n--- Chat History ---")
-        for encrypted_message in lines:
-            try:
-                decrypted_message = decrypt_message(encrypted_message.strip(), private_key)
-                print(decrypted_message)
-            except Exception as e:
-                print("Error decrypting a message:", e)
-        print("--- End of Chat History ---\n")
-    except FileNotFoundError:
-        print("Chat history file not found.")
-
+            print("\n--- Chat History ---")
+            for encrypted_message in lines:
+                try:
+                    decrypted_message = decrypt_message(encrypted_message.strip(), private_key)
+                    print(decrypted_message)
+                except Exception as e:
+                    print("Error decrypting a message:", e)
+            print("--- End of Chat History ---\n")
+        except FileNotFoundError:
+            print("Chat history file not found.")
+    else:
+        print("Incorrect admin code. You are not authorized to view the chat history.")
 
 def receive_messages(client_socket):
     """Handles receiving messages from the server."""
@@ -133,8 +184,9 @@ def send_messages(client_socket):
     while True:
         message = input('')
         if message == "/exit":
-            client_socket.close()
-            print("Disconnected from chat.")
+            print("Exiting the chat room.")
+            client_socket.send(f"{nickname} has left the chat.".encode())
+            post_exit_menu(client_socket)  # Show the post-exit menu
             break
         client_socket.send(f"{nickname}: {message}".encode())
 
