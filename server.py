@@ -1,10 +1,9 @@
 import socket
 import threading
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives import hashes
-import os
+from Crypto.Cipher import AES
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Util.Padding import pad, unpad
 import base64
 
 # Server setup
@@ -14,69 +13,75 @@ PORT = 65432
 # Global variables
 clients = []
 nicknames = []
+CHAT_HISTORY_PATH = "Chat_history.txt"
 
-# Key file paths
-PUBLIC_KEY_PATH = "public_key.pem"
-PRIVATE_KEY_PATH = "private_key.pem"
+# RSA Keys for Server
+key = RSA.generate(2048)
+private_key = key
+public_key = key.publickey()
 
-def generate_keys():
-    """Generates RSA public and private keys if they don't exist."""
-    if not os.path.exists(PUBLIC_KEY_PATH) or not os.path.exists(PRIVATE_KEY_PATH):
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048
-        )
-        public_key = private_key.public_key()
+# RSA encryption and decryption functions
+def encrypt_message_rsa(message, public_key):
+    cipher = PKCS1_OAEP.new(public_key)
+    encrypted_message = cipher.encrypt(message.encode())
+    return base64.b64encode(encrypted_message).decode('utf-8')
 
-        with open(PRIVATE_KEY_PATH, "wb") as private_file:
-            private_file.write(
-                private_key.private_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PrivateFormat.PKCS8,
-                    encryption_algorithm=serialization.NoEncryption()
-                )
-            )
+def decrypt_message_rsa(encrypted_message, private_key):
+    cipher = PKCS1_OAEP.new(private_key)
+    decrypted_message = cipher.decrypt(base64.b64decode(encrypted_message))
+    return decrypted_message.decode('utf-8')
 
-        with open(PUBLIC_KEY_PATH, "wb") as public_file:
-            public_file.write(
-                public_key.public_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PublicFormat.SubjectPublicKeyInfo
-                )
-            )
-        print("RSA key pair generated.")
+# AES Encryption key (make sure to use a securely generated key)
+SECRET_KEY = b'Sixteen byte key'  # 16-byte key for AES-128
 
-def load_public_key():
-    """Loads the public key from the file."""
-    with open(PUBLIC_KEY_PATH, "rb") as key_file:
-        public_key = serialization.load_pem_public_key(key_file.read())
-    return public_key
+# Encryption and decryption functions
+def encrypt_message(message):
+    cipher = AES.new(SECRET_KEY, AES.MODE_CBC)
+    ct_bytes = cipher.encrypt(pad(message.encode(), AES.block_size))
+    iv = base64.b64encode(cipher.iv).decode('utf-8')
+    ct = base64.b64encode(ct_bytes).decode('utf-8')
+    return iv, ct
 
-def encrypt_message(message, public_key):
-    """Encrypts a message using the provided RSA public key and returns a base64 encoded string."""
-    encrypted_message = public_key.encrypt(
-        message.encode(),
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
-    return base64.b64encode(encrypted_message).decode()
+def decrypt_message(iv, ct):
+    iv = base64.b64decode(iv)
+    ct = base64.b64decode(ct)
+    cipher = AES.new(SECRET_KEY, AES.MODE_CBC, iv)
+    pt = unpad(cipher.decrypt(ct), AES.block_size).decode('utf-8')
+    return pt
 
 def broadcast(message):
-    """Sends a message to all connected clients and stores it encrypted in a file."""
-    public_key = load_public_key()
-    encrypted_message = encrypt_message(message, public_key)
-    
-    with open("chat_history.txt", "a") as f:
-        f.write(encrypted_message + "\n")
-    
-    for client in clients:
-        try:
-            client.send(message.encode())
-        except:
-            remove_client(client)
+    """Sends a message to all connected clients and stores it in chat history."""
+    # Encrypt the message with AES
+    if message.startswith('/'):
+        # This is a plain text message (e.g., "/exit", "/join", etc.)
+        for client in clients:
+            try:
+                client.send(message.encode())  # Send plain text message to clients
+            except:
+                remove_client(client)
+
+        # Store plain text messages in chat history (Optional if you want to keep the history)
+        with open(CHAT_HISTORY_PATH, "a", encoding="utf-8") as f:
+            f.write(message + "\n")
+
+    else:
+        # Encrypt the message with AES
+        iv, encrypted_message = encrypt_message(message)
+        for client in clients:
+            try:
+                client.send(f"{iv}:{encrypted_message}".encode())  # Send AES-encrypted message to clients
+            except:
+                remove_client(client)
+
+        # Store the AES-encrypted message in chat history (Optional)
+        with open(CHAT_HISTORY_PATH, "a", encoding="utf-8") as f:
+            f.write(f"{iv}:{encrypted_message}\n")
+
+        # Log only the encrypted message in RSA format
+        encrypted_message_for_server = encrypt_message_rsa(message, public_key)
+        print(f"Encrypted message (RSA) on server: {encrypted_message_for_server}")
+
+
 
 def remove_client(client):
     """Removes client from clients and nicknames lists and closes the connection."""
@@ -95,8 +100,9 @@ def handle_client(client):
         try:
             message = client.recv(1024).decode()
             if message:
-                print(message)
-                broadcast(message)
+                iv, encrypted_message = message.split(":")
+                decrypted_message = decrypt_message(iv, encrypted_message)
+                broadcast(decrypted_message)
         except:
             remove_client(client)
             break
@@ -113,9 +119,10 @@ def receive_connections():
             client, address = server.accept()
             print(f"Connected with {str(address)}")
 
-            client.send("NICK".encode())
+            # Receive the nickname immediately
             nickname = client.recv(1024).decode()
-            
+
+            # Check if nickname is already in use
             if nickname in nicknames:
                 client.send("Nickname already taken. Disconnecting.".encode())
                 client.close()
@@ -124,8 +131,8 @@ def receive_connections():
             nicknames.append(nickname)
             clients.append(client)
 
-            print(f"Nickname is {nickname}")
-            broadcast(f"{nickname} joined the chat!")
+            print(f"{nickname} has joined the chat.")
+            broadcast(f"{nickname} joined the chat!")  # Broadcast join message
             client.send("Connected to the server.".encode())
 
             thread = threading.Thread(target=handle_client, args=(client,))
@@ -136,5 +143,4 @@ def receive_connections():
         server.close()
 
 if __name__ == "__main__":
-    generate_keys()  # Ensure keys are generated before starting the server
     receive_connections()
