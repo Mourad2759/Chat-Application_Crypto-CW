@@ -89,3 +89,27 @@ This file contains unit tests to verify the functionality and correctness of cry
 1. Clone the repository:
    ```bash
    git clone https://github.com/Mourad2759/Chat-Application_Crypto-CW.git
+
+## **How to Run** (Continued)
+
+2. **Run the Server**:
+   - Open a terminal and navigate to the directory where `server.py` is located.
+   - Run the server script by executing the following command:
+     ```bash
+     python server.py
+     ```
+   - The server will start listening for client connections on the specified host and port (default is `localhost:12345`).
+   - The server will handle encrypted message transmission, store chat histories, and maintain active connections.
+
+3. **Run the Client**:
+   - Open a new terminal window and navigate to the directory where `client.py` is located.
+   - Run the client script by executing the following command:
+     ```bash
+     python client.py
+     ```
+   - The client will connect to the server and prompt you to either register or log in.
+   - Follow the prompts for user registration (if you are a new user) or log in with existing credentials to start chatting.
+   - The client will encrypt messages with AES before sending them to the server and decrypt received messages for display.
+
+
+
